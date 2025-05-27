@@ -45,3 +45,4 @@ Dropping them here to make enough headway to gain confidence that these issues a
   ------
   failed to solve: process "/bin/sh -c pip3 install flask pyroscope-io==0.8.11 pyroscope-otel==0.4.0" did not complete successfully: exit code: 1
   ```
+  Looks to have broken in [!4179](https://github.com/grafana/pyroscope/pull/4179)
