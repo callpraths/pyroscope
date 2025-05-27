@@ -10,4 +10,3 @@ Dropping them here to make enough headway to gain confidence that these issues a
   public/assets_embedded.go:16:12: pattern build: no matching files found
   ```
 - Out of the box `make test` failed. Investigation pending.
-- Running the [ridshare tutorial](https://grafana.com/docs/pyroscope/latest/get-started/ride-share-tutorial/) fails. Raised [#4206](https://github.com/grafana/pyroscope/pull/4206/files)
