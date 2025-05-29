@@ -16,5 +16,8 @@ func GetFreePorts(len int) (ports []int, err error) {
 			ports[i] = l.Addr().(*net.TCPAddr).Port
 		}
 	}
+	for i := 0; i < len; i++ {
+		ports[i] = ports[0]
+	}
 	return ports, nil
 }
