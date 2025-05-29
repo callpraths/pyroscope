@@ -3,6 +3,7 @@ package querybackendclient
 import (
 	"context"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/test/bufconn"
 
 	metastorev1 "github.com/grafana/pyroscope/api/gen/proto/go/metastore/v1"
 	queryv1 "github.com/grafana/pyroscope/api/gen/proto/go/query/v1"
@@ -72,6 +75,8 @@ func (r *multiResolver) ResolveNow(resolver.ResolveNowOptions) {}
 func (r *multiResolver) Close() {}
 
 func Test_Concurrency(t *testing.T) {
+	listener := bufconn.Listen(256 << 10)
+
 	ports, err := test.GetFreePorts(nServers)
 	require.NoError(t, err)
 
@@ -88,7 +93,8 @@ func Test_Concurrency(t *testing.T) {
 	resolver.Register(&multiResolverBuilder{targets: addresses})
 	backendAddress := "multi:///"
 
-	cl, err := New(backendAddress, grpcClientCfg)
+	dialer := func(context.Context, string) (net.Conn, error) { return listener.Dial() }
+	cl, err := New(backendAddress, grpcClientCfg, grpc.WithContextDialer(dialer))
 	require.NoError(t, err)
 
 	for i := 0; i < nServers; i++ {
@@ -104,13 +110,15 @@ func Test_Concurrency(t *testing.T) {
 		}, test.NewTestingLogger(t), nil, cl, QueryHandler{})
 		require.NoError(t, err)
 
-		serv, err := server.New(sConfig)
+		serv := grpc.NewServer()
+
+		// serv, err := server.New(sConfig)
 		require.NoError(t, err)
 
-		queryv1.RegisterQueryBackendServiceServer(serv.GRPC, b)
+		queryv1.RegisterQueryBackendServiceServer(serv, b)
 
 		go func() {
-			require.NoError(t, serv.Run())
+			require.NoError(t, serv.Serve(listener))
 		}()
 	}
 
