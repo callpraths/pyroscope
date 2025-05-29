@@ -11,3 +11,9 @@ Dropping them here to make enough headway to gain confidence that these issues a
   ```
   - while there, probably best to scan and fix broken links etc in [the docs](https://grafana.com/docs/pyroscope/latest/) in one go.
 - Out of the box `make test` failed. Investigation pending.
+
+
+## Project
+
+Build a demo website to showcase Pyroscope components running in a distributed setup.
+
