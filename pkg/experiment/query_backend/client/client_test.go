@@ -2,6 +2,7 @@ package querybackendclient
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"testing"
@@ -97,10 +98,8 @@ func Test_Concurrency(t *testing.T) {
 		return listener.Dial()
 	}
 
-	grpcClientCfg := grpcclient.Config{
-		MaxRecvMsgSize: 104857600,
-		MaxSendMsgSize: 104857600,
-	}
+	grpcClientCfg := grpcclient.Config{}
+	grpcClientCfg.RegisterFlags(flag.NewFlagSet("", flag.PanicOnError))
 
 	resolver.Register(&multiResolverBuilder{targets: addresses})
 	backendAddress := "multi:///"
