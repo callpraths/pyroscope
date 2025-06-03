@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +32,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/pyroscope/pkg/frontend/frontendpb"
 	"github.com/grafana/pyroscope/pkg/scheduler/schedulerpb"
@@ -55,8 +55,12 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.Han
 	server := httptest.NewUnstartedServer(nil)
 	mux := mux.NewRouter()
 	server.Config.Handler = h2c.NewHandler(mux, &http2.Server{})
+
+	// Use an in-memory network connection to avoid test flake from network access.
+	listener := bufconn.Listen(256 << 10)
+	server.Listener = listener
+
 	server.Start()
-	u, err := url.Parse(server.URL)
 	require.NoError(t, err)
 	schedulerpbconnect.RegisterSchedulerForFrontendHandler(mux, s, opts...)
 	schedulerpbconnect.RegisterSchedulerForQuerierHandler(mux, s, opts...)
@@ -67,7 +71,14 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.Han
 		server.Close()
 	})
 
-	c, err := grpc.Dial(u.Hostname()+":"+u.Port(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	c, err := grpc.NewClient(
+		// Target address is irrelevant as we're using an in-memory connection.
+		// We simply need the DNS resolution to succeed.
+		"localhost:3030",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return listener.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
