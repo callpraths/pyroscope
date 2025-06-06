@@ -76,6 +76,10 @@ type Scheduler struct {
 
 	schedulerpb.UnimplementedSchedulerForFrontendServer
 	schedulerpb.UnimplementedSchedulerForQuerierServer
+
+	// Dial options used to initiate outgoing gRPC connections.
+	// Intended to be used by tests to use in-memory network connections.
+	DialOpts []grpc.DialOption
 }
 
 type requestKey struct {
@@ -536,6 +540,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		return
 	}
 
+	opts = append(opts, s.DialOpts...)
 	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)

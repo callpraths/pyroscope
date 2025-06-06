@@ -50,6 +50,7 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.Han
 	cfg.MaxOutstandingPerTenant = testMaxOutstandingPerTenant
 
 	s, err := NewScheduler(cfg, &limits{queriers: 2}, log.NewNopLogger(), reg)
+
 	require.NoError(t, err)
 
 	server := httptest.NewUnstartedServer(nil)
@@ -376,32 +377,31 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 }
 
 func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
-	_, frontendClient, querierClient := setupScheduler(t, nil)
+	s, frontendClient, querierClient := setupScheduler(t, nil)
 
 	fm := &frontendMock{resp: map[uint64]*httpgrpc.HTTPResponse{}}
-	frontendAddress := ""
 
 	// Setup frontend grpc server
 	{
 		frontendGrpcServer := grpc.NewServer()
 		frontendpb.RegisterFrontendForQuerierServer(frontendGrpcServer, fm)
 
-		l, err := net.Listen("tcp", "127.0.0.1:")
-		require.NoError(t, err)
-
-		frontendAddress = l.Addr().String()
-
+		l := bufconn.Listen(256 << 10)
 		go func() {
 			_ = frontendGrpcServer.Serve(l)
 		}()
-
 		t.Cleanup(func() {
 			_ = l.Close()
 		})
+
+		// Have the scheduler use the in-memory connection to call back into the frontend.
+		s.DialOpts = []grpc.DialOption{
+			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return l.Dial() }),
+		}
 	}
 
 	// After preparations, start frontend and querier.
-	frontendLoop := initFrontendLoop(t, frontendClient, frontendAddress)
+	frontendLoop := initFrontendLoop(t, frontendClient, "irrelevant://because-we-use-in-memory-connection")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
 		Type:        schedulerpb.FrontendToSchedulerType_ENQUEUE,
 		QueryID:     100,
