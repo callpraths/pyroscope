@@ -44,12 +44,20 @@ import (
 
 const testMaxOutstandingPerTenant = 5
 
-func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.HandlerOption) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
-	cfg := Config{}
+type schedulerArgs struct {
+	reg         prometheus.Registerer
+	handlerOpts []connect.HandlerOption
+	dialOpts    []grpc.DialOption
+}
+
+func setupScheduler(t *testing.T, args schedulerArgs) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
+	cfg := Config{
+		DialOpts: args.dialOpts,
+	}
 	flagext.DefaultValues(&cfg)
 	cfg.MaxOutstandingPerTenant = testMaxOutstandingPerTenant
 
-	s, err := NewScheduler(cfg, &limits{queriers: 2}, log.NewNopLogger(), reg)
+	s, err := NewScheduler(cfg, &limits{queriers: 2}, log.NewNopLogger(), args.reg)
 
 	require.NoError(t, err)
 
@@ -63,8 +71,8 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.Han
 
 	server.Start()
 	require.NoError(t, err)
-	schedulerpbconnect.RegisterSchedulerForFrontendHandler(mux, s, opts...)
-	schedulerpbconnect.RegisterSchedulerForQuerierHandler(mux, s, opts...)
+	schedulerpbconnect.RegisterSchedulerForFrontendHandler(mux, s, args.handlerOpts...)
+	schedulerpbconnect.RegisterSchedulerForQuerierHandler(mux, s, args.handlerOpts...)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 	t.Cleanup(func() {
@@ -89,9 +97,14 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer, opts ...connect.Han
 	return s, schedulerpb.NewSchedulerForFrontendClient(c), schedulerpb.NewSchedulerForQuerierClient(c)
 }
 
-func Test_Timeout(t *testing.T) {
-	s, _, querierClient := setupScheduler(t, nil, connect.WithInterceptors(util.WithTimeout(1*time.Second)))
+func setupSchedulerWithHandlerOpts(t *testing.T, handlerOpts ...connect.HandlerOption) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
+	return setupScheduler(t, schedulerArgs{
+		handlerOpts: handlerOpts,
+	})
+}
 
+func Test_Timeout(t *testing.T) {
+	s, _, querierClient := setupSchedulerWithHandlerOpts(t, connect.WithInterceptors(util.WithTimeout(1*time.Second)))
 	ql, err := querierClient.QuerierLoop(context.Background())
 	require.NoError(t, err)
 	require.NoError(t, ql.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1"}))
@@ -100,7 +113,7 @@ func Test_Timeout(t *testing.T) {
 }
 
 func TestSchedulerBasicEnqueue(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -128,7 +141,7 @@ func TestSchedulerBasicEnqueue(t *testing.T) {
 }
 
 func TestSchedulerEnqueueWithCancel(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -158,7 +171,7 @@ func initQuerierLoop(t *testing.T, querierClient schedulerpb.SchedulerForQuerier
 }
 
 func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop1 := initFrontendLoop(t, frontendClient, "frontend-1")
 	frontendLoop2 := initFrontendLoop(t, frontendClient, "frontend-2")
@@ -199,7 +212,7 @@ func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
 }
 
 func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -229,7 +242,7 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -261,7 +274,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 }
 
 func TestTracingContext(t *testing.T) {
-	scheduler, frontendClient, _ := setupScheduler(t, nil)
+	scheduler, frontendClient, _ := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
@@ -292,7 +305,7 @@ func TestTracingContext(t *testing.T) {
 }
 
 func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
-	scheduler, frontendClient, _ := setupScheduler(t, nil)
+	scheduler, frontendClient, _ := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
@@ -313,7 +326,7 @@ func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
 }
 
 func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
-	scheduler, frontendClient, querierClient := setupScheduler(t, nil)
+	scheduler, frontendClient, querierClient := setupScheduler(t, schedulerArgs{})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
@@ -345,7 +358,7 @@ func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 }
 
 func TestSchedulerMaxOutstandingRequests(t *testing.T) {
-	_, frontendClient, _ := setupScheduler(t, nil)
+	_, frontendClient, _ := setupScheduler(t, schedulerArgs{})
 
 	for i := 0; i < testMaxOutstandingPerTenant; i++ {
 		// coming from different frontends
@@ -377,7 +390,14 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 }
 
 func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
-	s, frontendClient, querierClient := setupScheduler(t, nil)
+
+	l := bufconn.Listen(256 << 10)
+	_, frontendClient, querierClient := setupScheduler(t, schedulerArgs{
+		// Have the scheduler use the in-memory connection to call back into the frontend.
+		dialOpts: []grpc.DialOption{
+			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return l.Dial() }),
+		},
+	})
 
 	fm := &frontendMock{resp: map[uint64]*httpgrpc.HTTPResponse{}}
 
@@ -386,18 +406,12 @@ func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
 		frontendGrpcServer := grpc.NewServer()
 		frontendpb.RegisterFrontendForQuerierServer(frontendGrpcServer, fm)
 
-		l := bufconn.Listen(256 << 10)
 		go func() {
 			_ = frontendGrpcServer.Serve(l)
 		}()
 		t.Cleanup(func() {
 			_ = l.Close()
 		})
-
-		// Have the scheduler use the in-memory connection to call back into the frontend.
-		s.DialOpts = []grpc.DialOption{
-			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return l.Dial() }),
-		}
 	}
 
 	// After preparations, start frontend and querier.
@@ -438,7 +452,7 @@ func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
 func TestSchedulerMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 
-	scheduler, frontendClient, _ := setupScheduler(t, reg)
+	scheduler, frontendClient, _ := setupScheduler(t, schedulerArgs{reg: reg})
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
