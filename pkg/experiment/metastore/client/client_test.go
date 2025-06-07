@@ -73,32 +73,34 @@ func testRediscoverWrongLeader(t *testing.T, f func(c *Client)) {
 	l := test.NewTestingLogger(t)
 	config := &grpcclient.Config{}
 	flagext.DefaultValues(config)
-	c := New(l, *config, d)
 	ports, err := test.GetFreePorts(nServers * 2)
 	assert.NoError(t, err)
 
 	p1 := ports[:nServers]
-	p2 := ports[nServers:]
-	m := sync.Mutex{}
-	var servers *mockServers
-	defer servers.Close()
+	dServers1 := createServers(p1)
 
+	p2 := ports[nServers:]
+	dServers2 := createServers(p2)
+	mockServers2, dialOpt := createMockServers(t, l, dServers2)
+	defer mockServers2.Close()
+
+	c := New(l, *config, d, dialOpt)
+	m := sync.Mutex{}
 	verify := func() {}
+	initWrongLeaderCalled := false
 	d.On("Rediscover", mock.Anything).Run(func(args mock.Arguments) {
 		m.Lock()
 		defer m.Unlock()
-		if servers == nil {
-			srvInfo := createServers(p2)
-			servers = createMockServers(t, l, p2)
-			verify = servers.InitWrongLeader()
-
+		if !initWrongLeaderCalled {
+			initWrongLeaderCalled = true
+			verify = mockServers2.InitWrongLeader()
 			// call updateServers twice
-			c.updateServers(srvInfo)
-			c.updateServers(srvInfo)
+			c.updateServers(dServers2)
+			c.updateServers(dServers2)
 		}
 	}).Return()
 
-	c.updateServers(createServers(p1))
+	c.updateServers(dServers1)
 	f(c)
 	verify()
 }

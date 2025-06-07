@@ -11,9 +11,11 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 
 	metastorev1 "github.com/grafana/pyroscope/api/gen/proto/go/metastore/v1"
 	"github.com/grafana/pyroscope/pkg/experiment/metastore/discovery"
@@ -196,17 +198,16 @@ func errOrT[T any](t *T, f func() error) (*T, error) {
 	return t, nil
 }
 
-func createMockServers(t *testing.T, l log.Logger, ports []int) *mockServers {
+func createMockServers(t *testing.T, l log.Logger, dServers []discovery.Server) (*mockServers, grpc.DialOption) {
 	var servers []*mockServer
-	for idx, port := range ports {
+	listeners := make(map[string]*bufconn.Listener)
+	for idx, dserv := range dServers {
 		s := newMockServer(t)
 		s.index = idx
 		s.id = testServerId(idx)
-		s.address = fmt.Sprintf(":%d", port)
-		lis, err := net.Listen("tcp", s.address)
-		if err != nil {
-			assert.NoError(t, err)
-		}
+		s.address = dserv.ResolvedAddress
+		lis := bufconn.Listen(256 << 10)
+		listeners[s.address] = lis
 		go func() {
 			if err := s.srv.Serve(lis); err != nil {
 				assert.NoError(t, err)
@@ -214,12 +215,18 @@ func createMockServers(t *testing.T, l log.Logger, ports []int) *mockServers {
 		}()
 		servers = append(servers, s)
 	}
-	return &mockServers{
+
+	ms := &mockServers{
 		servers: servers,
 		t:       t,
 		l:       l,
 	}
-
+	dialer := func(_ context.Context, address string) (net.Conn, error) {
+		listener := listeners[address]
+		require.NotNil(t, listener)
+		return listener.Dial()
+	}
+	return ms, grpc.WithContextDialer(dialer)
 }
 
 func newMockServer(t *testing.T) *mockServer {
