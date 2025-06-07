@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -222,9 +221,11 @@ func createMockServers(t *testing.T, l log.Logger, dServers []discovery.Server) 
 		l:       l,
 	}
 	dialer := func(_ context.Context, address string) (net.Conn, error) {
-		listener := listeners[address]
-		require.NotNil(t, listener)
-		return listener.Dial()
+		el := listeners[address]
+		if el != nil {
+			return el.Dial()
+		}
+		return net.Dial("tcp", address)
 	}
 	return ms, grpc.WithContextDialer(dialer)
 }
