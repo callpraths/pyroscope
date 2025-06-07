@@ -96,13 +96,13 @@ func (m *mockServer) PromoteToLeader(ctx context.Context, request *raftnodepb.Pr
 
 func createServers(ports []int) []discovery.Server {
 	var servers []discovery.Server
-	for i := 0; i < nServers; i++ {
+	for i, p := range ports {
 		servers = append(servers, discovery.Server{
 			Raft: raft.Server{
 				ID:      testServerId(i),
 				Address: raft.ServerAddress(fmt.Sprintf("server-%d", i)),
 			},
-			ResolvedAddress: fmt.Sprintf("127.0.0.1:%d", ports[i]),
+			ResolvedAddress: fmt.Sprintf("127.0.0.1:%d", p),
 		})
 	}
 	return servers
@@ -140,6 +140,7 @@ func (m *mockServers) InitWrongLeader() func() {
 	s := new(wrongLeaderState)
 	s.leaderIndex = -1
 
+	nServers := len(m.servers)
 	for _, srv := range m.servers {
 		srv := srv
 		errf := func() error {

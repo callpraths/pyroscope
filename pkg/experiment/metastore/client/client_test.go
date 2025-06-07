@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -16,20 +15,16 @@ import (
 	"github.com/grafana/pyroscope/pkg/test/mocks/mockdiscovery"
 )
 
-const nServers = 3
-
 func TestUnavailable(t *testing.T) {
 	d := mockdiscovery.NewMockDiscovery(t)
 	d.On("Subscribe", mock.Anything).Return()
 	l := test.NewTestingLogger(t)
 	c := New(l, grpcclient.Config{}, d)
-	ports, err := test.GetFreePorts(nServers)
-	assert.NoError(t, err)
 
 	d.On("Rediscover").Run(func(args mock.Arguments) {
 	}).Return()
 
-	c.updateServers(createServers(ports))
+	c.updateServers(createServers([]int{30030, 30031, 30032}))
 	res, err := c.AddBlock(context.Background(), &metastorev1.AddBlockRequest{})
 	require.Error(t, err)
 	require.Nil(t, res)
@@ -73,18 +68,14 @@ func testRediscoverWrongLeader(t *testing.T, f func(c *Client)) {
 	l := test.NewTestingLogger(t)
 	config := &grpcclient.Config{}
 	flagext.DefaultValues(config)
-	ports, err := test.GetFreePorts(nServers * 2)
-	assert.NoError(t, err)
 
-	p1 := ports[:nServers]
-	dServers1 := createServers(p1)
+	dServers1 := createServers([]int{30031, 30032, 30033})
 
-	p2 := ports[nServers:]
-	dServers2 := createServers(p2)
-	mockServers2, dialOpt := createMockServers(t, l, dServers2)
+	dServers2 := createServers([]int{40031, 40032, 40033})
+	mockServers2, dialOpts := createMockServers(t, l, dServers2)
 	defer mockServers2.Close()
 
-	c := New(l, *config, d, dialOpt...)
+	c := New(l, *config, d, dialOpts...)
 	m := sync.Mutex{}
 	verify := func() {}
 	initWrongLeaderCalled := false
