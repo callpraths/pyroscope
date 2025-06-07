@@ -197,7 +197,8 @@ func errOrT[T any](t *T, f func() error) (*T, error) {
 	return t, nil
 }
 
-func createMockServers(t *testing.T, l log.Logger, dServers []discovery.Server) (*mockServers, grpc.DialOption) {
+// Returns the grpc.DialOptions needed for a client connection to the created mock servers.
+func createMockServers(t *testing.T, l log.Logger, dServers []discovery.Server) (*mockServers, []grpc.DialOption) {
 	var servers []*mockServer
 	listeners := make(map[string]*bufconn.Listener)
 	for idx, dserv := range dServers {
@@ -227,7 +228,7 @@ func createMockServers(t *testing.T, l log.Logger, dServers []discovery.Server) 
 		}
 		return net.Dial("tcp", address)
 	}
-	return ms, grpc.WithContextDialer(dialer)
+	return ms, []grpc.DialOption{grpc.WithContextDialer(dialer)}
 }
 
 func newMockServer(t *testing.T) *mockServer {

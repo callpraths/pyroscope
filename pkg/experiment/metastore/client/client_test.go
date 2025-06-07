@@ -84,7 +84,7 @@ func testRediscoverWrongLeader(t *testing.T, f func(c *Client)) {
 	mockServers2, dialOpt := createMockServers(t, l, dServers2)
 	defer mockServers2.Close()
 
-	c := New(l, *config, d, dialOpt)
+	c := New(l, *config, d, dialOpt...)
 	m := sync.Mutex{}
 	verify := func() {}
 	initWrongLeaderCalled := false
