@@ -100,7 +100,7 @@ type Config struct {
 
 	// Dial options used to initiate outgoing gRPC connections.
 	// Intended to be used by tests to use in-memory network connections.
-	DialOpts []grpc.DialOption
+	DialOpts []grpc.DialOption `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
