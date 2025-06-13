@@ -18,10 +18,10 @@ func CreateInMemoryListeners(addresses []string) (map[string]*bufconn.Listener, 
 		listeners[a] = el
 	}
 	dialer := func(_ context.Context, address string) (net.Conn, error) {
-		// el := listeners[address]
-		// if el != nil {
-		// 	return el.Dial()
-		// }
+		el := listeners[address]
+		if el != nil {
+			return el.Dial()
+		}
 		return net.Dial("tcp", address)
 	}
 	return listeners, grpc.WithContextDialer(dialer)
